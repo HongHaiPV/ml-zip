@@ -1,192 +1,240 @@
 from collections import Counter
-import numpy as np
+from dataclasses import dataclass, field
 
 PRECISION = 32
 MSB_MASK = 1 << PRECISION-1
 SMSB_MASK = 1 << PRECISION-2
 SIGN_MASK = (1 << PRECISION) - 1
 
-class ArithmeticCoding:
+@dataclass
+class ScaledRangesState:
+  """
+  Base state for probability range in Arithmetic Encoding.
 
-  def __init__(self, model, stream_type='char'):
-    self._lower = 0x0
-    self._upper = SIGN_MASK
-    self._underflow_bits = 0
-    self._model = model
-    self._stream_type = stream_type
+  Attributes:
+    lower (int): the lower probability range, represented by a sequence of bits.
+      Default is infinite 0 bits, represented by 0x0 as the first PRECISION
+      bits.
 
-  def get_context(self, stream):
+    upper (int): the upper probability range, represented by a sequence of
+      bits. Default is infinite 1 bits, represented by 0x0 as the first
+      PRECISION bits.
+  """
+
+  lower: int = field(default=0x0)
+  upper: int = field(default=SIGN_MASK)
+
+  def get_range(self):
     """
-    Get window context from stream and adding padding symbols (<PAD>) if needed.
-
-    Args:
-      stream: stream of symbols, i.e. bytes, characters or words.
+    Estimate current probability range.
 
     Returns:
-      List of symbols with special <PAD> characters with length required from
-      the language model.
+      The current range, represented by an integer.
     """
-    
-    if not hasattr(self._model, 'context_width'):
-      return None
+
+    return self.upper - self.lower + 1 
+
+@dataclass
+class EncoderState(ScaledRangesState):
+  """
+  State for the encoder in Arithmetic Encoding.
+
+  Attributes:
+    underflow_bits (int): number of mismatched bits when both lower and upper
+      range close to 0.5
+  """
+
+  underflow_bits: int = field(default=0)
+
+@dataclass
+class DecoderState(ScaledRangesState):
+  """
+  State for the decoder in Arithmetic Encoding.
   
-    if len(stream) < self._model.context_width - 1:      
-      return ['<PAD>']*(self._model.context_width - len(stream) - 1) + stream
+  Attributes:
+    code_length (int): the number of bits of the encoded message.
+    code (int): the window of PRECISION (default to 32) bits that we're
+      currently processing.
+    index (int): the current position of the least significant bit in the code.
+  """
 
-    return stream[-(self._model.context_width - 1):]
-    
+  code_length: int = field(default=0)
+  code: int = field(default=0)
+  index: int = field(default=0)
 
-  def streaming(self, inp):
+
+class ArithmeticCoding:
+  """
+  A class for encoding and decoding data using the Arithmetic Encoding algorithm.
+  """
+
+  def __init__(self, model):
+    self._model = model
+    self.get_context = model.get_context
+    self.get_stream = model.get_stream
+
+  def append_bits(self, state):
     """
-    Turn inputs into stream of symbols
+    Continuously convert the input stream into the range of probabilities and 
+    return the identical MSB bits. 
 
     Args:
-      inp: a string
+      state: the lower, upper range of probabilities and underflow_bits for
+        dealing with the underflow condition
 
     Returns:
-      List of symbols, i.e. bytes, characters, or words.
+      encoded_chunk: the encoded MSB bits.
     """
 
-    # Character model
-    if self._stream_type == 'char':
-      return list(inp), len(inp)
-    
-    # Word model
-    elif self._stream_type == 'word':
-      return inp.split(' '), len(inp.split(' '))
+    encoded_chunk = []
 
-  def append_bits(self, encoded):
-    """
-    Turn inputs into stream of symbols
-
-    Args:
-      inp: a string
-
-    Returns:
-      List of symbols, i.e. bytes, characters, or words.
-    """
     while True:
-      if (self._upper & MSB_MASK) == (self._lower & MSB_MASK):
+      if (state.upper & MSB_MASK) == (state.lower & MSB_MASK):
         # Add most significant bit to output
-        encoded.append((self._upper & MSB_MASK) != 0)
+        encoded_chunk.append((state.upper & MSB_MASK) != 0)
         
         # Add underflow bit to output
-        while self._underflow_bits > 0:
-          encoded.append((self._upper & MSB_MASK) == 0)
-          self._underflow_bits -= 1
+        while state.underflow_bits > 0:
+          encoded_chunk.append((state.upper & MSB_MASK) == 0)
+          state.underflow_bits -= 1
 
       # Resolve underflow problem self._lower = 011..., self._upper = 100...
       # Remove second most significant bit
-      elif (self._lower & SMSB_MASK) and not(self._upper & SMSB_MASK):
-        self._underflow_bits += 1
-        self._lower &= ~(MSB_MASK | SMSB_MASK)
-        self._upper |= SMSB_MASK
+      elif (state.lower & SMSB_MASK) and not(state.upper & SMSB_MASK):
+        state.underflow_bits += 1
+        state.lower &= ~(MSB_MASK | SMSB_MASK)
+        state.upper |= SMSB_MASK
         
       else:
-        return encoded
-      # Remove potential negative sign
+        return encoded_chunk
+      
       # Remove the most significant bit
-      self._lower <<= 1
-      self._upper <<= 1
-      self._upper |= 1
+      state.lower <<= 1
+      state.upper <<= 1
+      state.upper |= 1
 
       # Remove potential negative sign
-      # 0x11704454 vs 0x1f704454
-      self._lower &= SIGN_MASK
-      self._upper &= SIGN_MASK
+      # i.e. 0x11704454 vs 0x1f704454
+      state.lower &= SIGN_MASK
+      state.upper &= SIGN_MASK
 
 
-  def append_remain_bits(self, encoded):
-    
-    # Add self._lower's second MSB to output
-    # The MSB bit are already added
-    encoded.append((self._lower & SMSB_MASK) != 0)
-    
-    # Add underflow bits to the output
-    self._underflow_bits += 1
-    for _ in range(self._underflow_bits):
-      encoded.append((self._lower & SMSB_MASK) == 0)
-    return encoded
+  def append_remain_bits(self, state):
+    """
+    Attach the remaining bits from the state variable to the encoded bits.
 
-  def encode(self, inp):
+    Args:
+      state: the state of current probabilities range.
+
+    Returns:
+      encoded_chunk: the remained bits from the probabilities range.
+    """
+
+    encoded_chunk = []
+    encoded_chunk.append((state.lower & SMSB_MASK) != 0)
     
-    # Convert string to stream
-    # char level: stream = ['t', 'h', 'e', ' ', 'f', ...]
-    # word level: stream =['the', 'fox', 'jumped', ...]
-    stream, count = self.streaming(inp)
+    state.underflow_bits += 1
+    for _ in range(state.underflow_bits):
+      encoded_chunk.append((state.lower & SMSB_MASK) == 0)
+    return encoded_chunk
+
+
+  def encode(self, input):
+    """
+    Encode the input data using arithmetic coding.
+
+    Args:
+      input: an iterable object that needs to be encoded.
+
+    Returns:
+      encoded: encoded data as a list of bits.
+      length: length of the original data stream.
+    """
+    state = EncoderState()
+    stream, length = self.get_stream(input)
     encoded = []
 
     for idx, s in enumerate(stream):
-      # print('Trace after append_bits: lower {} upper {}'.format(self._lower/SIGN_MASK, self._upper/SIGN_MASK))
-      
-      # Compute the current range
-      current_range = self._upper - self._lower + 1
+      current_range = state.get_range()
       
       # Get context from input for the statistical model
       context = self.get_context(stream[:idx])
-      # print('current range {}'.format(current_range/SIGN_MASK))
-      # print('Symbol: {}'.format(s))
       
       # Update the new lower bound and upper bound from the distribution
-      self._upper = self._lower + int(current_range * self._model.get_upper(s, context)) - 1
-      self._lower = self._lower + int(current_range * self._model.get_lower(s, context))
-      # print('Trace before append_bits: lower {} upper {}'.format(self._lower/SIGN_MASK, self._upper/SIGN_MASK))
-      encoded = self.append_bits(encoded)
+      state.upper = state.lower + int(current_range * self._model.get_upper(s, context)) - 1
+      state.lower = state.lower + int(current_range * self._model.get_lower(s, context))
+      encoded += self.append_bits(state)
     
-    encoded = self.append_remain_bits(encoded)
-    return encoded, count
+    encoded += self.append_remain_bits(state)
+    return encoded, length
 
-  def read_encoded_bits(self, code, inp):
+  def parse_encoded_bits(self, state, input):
+    """
+    Digest the encoded bits and update the decoder state accordingly.
     
-    # Similar to append_bits() function
-    # print('read_encoded_bits: lower, upper',self._lower, self._upper)
+    The decoder state contains lower and upper probability range, the current
+    index of the input encoded bits and the current working windows on
+    these bits: code.
+    
+    Args:
+      state: the state variable of the current probability range.
+      input: the encoded bits.
+
+    Return:
+      None 
+    """
     
     while True:
-      if (self._upper ^ ~self._lower) & MSB_MASK:
+      if (state.upper ^ ~state.lower) & MSB_MASK:
         # Only shift bit
         pass
 
-      elif (~self._upper & self._lower) & SMSB_MASK:
-        # print('under flow ', code, bin(SMSB_MASK))
-        self._lower &= ~(MSB_MASK | SMSB_MASK)
-        self._upper |= SMSB_MASK
+      elif (~state.upper & state.lower) & SMSB_MASK:
+        state.lower &= ~(MSB_MASK | SMSB_MASK)
+        state.upper |= SMSB_MASK
         
         # Remove the 2nd MSB from code
         # Note that self._lower = 01... 
         # and self._upper = 10...
-        code ^= SMSB_MASK
+        state.code ^= SMSB_MASK
 
       else:
-        return code
+        return
 
-      # self._lower &= SIGN_MASK
-      self._lower <<= 1
-      # self._upper &= SIGN_MASK
-      self._upper <<= 1
-      self._upper |= 1
+      state.lower <<= 1
+      state.upper <<= 1
+      state.upper |= 1
       
-      self._lower &= SIGN_MASK
-      self._upper &= SIGN_MASK
+      state.lower &= SIGN_MASK
+      state.upper &= SIGN_MASK
       
-      code <<= 1
-      code &= SIGN_MASK
-      if len(inp) > 0:
-        bit = inp.pop(0)
-        code |= bit
+      state.code <<= 1
+      state.code &= SIGN_MASK
+      if state.index < state.code_length:
+        state.code |= input[state.index]
+        state.index += 1
       
-  def decode(self, inp, length):
+  def decode(self, input, length):
+    """
+    Turn stream of encoded bits into decoded symbols.
+
+    Args:
+      input: the encoded bits.
+      length: the length of original data.
+
+    Return:
+      The decoded stream.
+
+    """
+    state = DecoderState(code_length=len(input))
+
     
-    # Initialize the decoder
-    self._lower = 0x0
-    self._upper = SIGN_MASK
-    code = 0
-    
-    # Read the first PRECISION bits
     for i in range(PRECISION):
-      code <<= 1
-      if len(inp) > 0:
-        bit = inp.pop(0)
-        code |= bit
+      state.code <<= 1
+      if state.index < state.code_length:
+        state.code |= input[state.index]
+        state.index += 1
+
     out_stream = []
     count = 0
     
@@ -196,24 +244,22 @@ class ArithmeticCoding:
         break
       count += 1
       
-      current_range = self._upper - self._lower + 1
+      current_range = state.get_range()
       
       # Calculative the cummulative probability range
-      prob_range = (code - self._lower + 1) / current_range
+      prob_range = (state.code - state.lower + 1) / current_range
       
-      # print('prob_range',prob_range)
       # Get context to get current symbol's probability
       context = self.get_context(out_stream)
-      # print(context)
-      s = self._model.get_symbol(prob_range, context)
+      symbol = self._model.get_symbol(prob_range, context)
+    
+      out_stream.append(symbol)
       
-      # Append new decoded symbol to the output
-      out_stream.append(s)
-      
-      # print('current range {}, code {}'.format(current_range, code))
-      self._upper = self._lower + int(current_range * self._model.get_upper(s, context)) - 1
-      self._lower = self._lower + int(current_range * self._model.get_lower(s, context))
+      state.upper = state.lower + int(current_range * self._model.get_upper
+        (symbol, context)) - 1
+      state.lower = state.lower + int(current_range * self._model.get_lower
+        (symbol, context))
       
       # print('trace: lower {} upper {}'.format(self._lower, self._upper))
-      code = self.read_encoded_bits(code, inp)
+      self.parse_encoded_bits(state, input)
     return out_stream
