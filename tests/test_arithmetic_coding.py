@@ -9,11 +9,36 @@ UNDER_BITS = 1
 CODE_LENGT = 3
 INPUT_CODE = [False, True, False, True]
 
+ABCD = "abcddacb"
+L_CDF = {0:0.0, 1:0.25, 2: 0.5, 3:0.75, 4:1.0}
+S_IDX = {'a':0, 'b':1, 'c':2, 'd':3}
+R_IDX = {0:'a', 1:'b', 2:'c', 3:'d'}
+
+
+def dynamic_get_lower(symbol, context):
+  return L_CDF[S_IDX[symbol]]
+
+def dynamic_get_upper(symbol, context):
+  return L_CDF[S_IDX[symbol] + 1]
+
+def dynamic_get_symbol(prob, context):
+  for idx in L_CDF:
+    if idx == len(L_CDF)-1:
+      return R_IDX[idx]
+    if L_CDF[idx] <= prob and L_CDF[idx+1] > prob:
+      return R_IDX[idx]
+
+def dynamic_get_stream(input):
+  return list(input), len(input)
+
 @pytest.fixture
 def mock_model():
   mock = Mock()
-  mock.get_stream.return_value = None
   mock.get_context.return_value = None
+  mock.get_stream.side_effect = dynamic_get_stream
+  mock.get_lower.side_effect = dynamic_get_lower
+  mock.get_upper.side_effect = dynamic_get_upper
+  mock.get_symbol.side_effect = dynamic_get_symbol
   return mock
 
 @pytest.fixture
@@ -57,8 +82,13 @@ def test_parse_encoded_bits(ac, decoder_state):
   assert decoder_state.code == 0x80100000
   assert decoder_state.index == CODE_LENGT
 
-def encode():
-  pass
+def test_encode(ac):
+  encoded, length = ac.encode(ABCD)
+  assert encoded == [False, False, False, True, True, False, True, True, True,
+                     True, False, False, True, False, False, True, False, True]
+  assert length == len(ABCD)
 
-def decode():
-  pass
+def test_decode(ac):
+  encoded, length = ac.encode(ABCD)
+  output = ac.decode(encoded, length)
+  assert ''.join(output) == ABCD
