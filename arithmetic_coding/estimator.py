@@ -1,4 +1,8 @@
+import numpy as np
+
 from abc import ABC, abstractmethod
+from collections import Counter
+
 
 class Estimator(ABC):
 
@@ -14,23 +18,57 @@ class Estimator(ABC):
   def get_symbol(self, probability_range, context):
     pass
 
+  @abstractmethod
+  def get_context(self, stream):
+    pass
+    
+  @abstractmethod
+  def get_stream(self, input, stream_type='char'):
+    pass
+
 class FrequencyEstimator(Estimator):
   """
   A simple static estimator using frequency table.
   """
 
-  def __init__(self, stream):
+  def __init__(self, data, stream_type):
+    self.stream_type = stream_type
+    stream, length = self.get_stream(data)
     self.counter = Counter(stream)
     total = sum(self.counter.values())
 
     self.symbols = sorted(self.counter.keys())
-
     self.index = {s:idx for idx, s in enumerate(self.symbols)}
-
     self.probability = np.array([self.counter[s] for s in self.symbols])
     self.probability = self.probability/total
     self.cdf = np.array([self.probability[:idx].sum() for idx in range(len(self.symbols))])
     self.cdf = np.append(self.cdf, [1.0])
+    
+
+  def get_context(self, stream):
+    """
+    This estimator doesn't need context.
+    """
+    pass
+
+  def get_stream(self, input):
+    """
+    Turn inputs into stream of symbols.
+
+    Args:
+      inp: a string
+
+    Returns:
+      List of symbols, i.e. bytes, characters, or words.
+    """
+
+    # Character model
+    if self.stream_type == 'char':
+      return list(input), len(input)
+    
+    # Word model
+    elif self.stream_type == 'word':
+      return input.split(' '), len(input.split(' '))
 
   def get_upper(self, symbol, context):
     if self.index[symbol] == len(self.symbols)-1:
