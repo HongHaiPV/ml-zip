@@ -4,6 +4,9 @@ from unittest.mock import Mock
 from arithmetic_coding.arithmetic_coding import ArithmeticCoding
 from arithmetic_coding.estimator import FrequencyEstimator
 
+
+ABCD = 'abcddabccadb'
+
 LOREM_IPSUM = ("<p>Lorem ipsum dolor sit amet. Ut mollitia dolores vel harum"
                "galisum galisum aut obcaecati numquam ut architecto dolorem! "
                "Non minima similique ut nesciunt molestiae ex nemo perferendis"
@@ -13,28 +16,40 @@ LOREM_IPSUM = ("<p>Lorem ipsum dolor sit amet. Ut mollitia dolores vel harum"
                " sunt consequuntur vel soluta galisum! </p>"
               )
 
-@pytest.fixture
-def char_frequency_estimator():
-  return FrequencyEstimator(LOREM_IPSUM, 'char')
+testcase_encode_decode = [
+              ('char', list(LOREM_IPSUM)),
+              (('word'), LOREM_IPSUM.split(' '))
+            ]
 
 @pytest.fixture
-def word_frequency_estimator():
-  return FrequencyEstimator(LOREM_IPSUM, 'word')
+def frequency_table(request):
+  frequency_table = FrequencyEstimator('char')
+  frequency_table.fit(ABCD)
+  return frequency_table
 
-@pytest.fixture
-def char_ac(char_frequency_estimator):
-  return ArithmeticCoding(char_frequency_estimator)
+def test_fit(frequency_table):
+  expected = [0, 0.25, 0.5, 0.75, 1.0]
+  assert all(x1 == x2 for x1, x2 in zip(frequency_table.cdf, expected))
 
-@pytest.fixture
-def word_ac(word_frequency_estimator):
-  return ArithmeticCoding(word_frequency_estimator)
+def test_get_upper(frequency_table):
+  assert frequency_table.get_upper('a', None) == 0.25
+  assert frequency_table.get_upper('d', None) == 1.0
 
-def test_frequency_char(char_ac):
-  encoded, length = char_ac.encode(LOREM_IPSUM)
-  decoded = char_ac.decode(encoded, length)
-  assert decoded == list(LOREM_IPSUM)
+def test_get_lower(frequency_table):
+  assert frequency_table.get_lower('a', None) == 0
+  assert frequency_table.get_lower('d', None) == 0.75
 
-def test_frequency_word(word_ac):
-  encoded, length = word_ac.encode(LOREM_IPSUM)
-  decoded = word_ac.decode(encoded, length)
-  assert decoded == LOREM_IPSUM.split()
+def test_get_symbol(frequency_table):
+  assert frequency_table.get_symbol(0.1, None) == 'a'
+  assert frequency_table.get_symbol(0.0, None) == 'a'
+  assert frequency_table.get_symbol(0.75999, None) == 'd'
+  assert frequency_table.get_symbol(0.99999, None) == 'd'
+
+@pytest.mark.parametrize('mode, expected', testcase_encode_decode)
+def test_encode_decode(mode, expected):
+  frequency_table = FrequencyEstimator(mode)
+  frequency_table.fit(LOREM_IPSUM)
+  frequency_ac = ArithmeticCoding(frequency_table)
+  encoded, length = frequency_ac.encode(LOREM_IPSUM)
+  decoded = frequency_ac.decode(encoded, length)
+  assert decoded == expected
