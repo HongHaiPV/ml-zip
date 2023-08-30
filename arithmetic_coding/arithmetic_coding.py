@@ -12,11 +12,11 @@ class ScaledRangesState:
   Base state for probability range in Arithmetic Encoding.
 
   Attributes:
-    lower (int): the lower probability range, represented by a sequence of bits.
+    lower (int): The lower probability range, represented by a sequence of bits.
       Default is infinite 0 bits, represented by 0x0 as the first PRECISION
       bits.
 
-    upper (int): the upper probability range, represented by a sequence of
+    upper (int): The upper probability range, represented by a sequence of
       bits. Default is infinite 1 bits, represented by 0x0 as the first
       PRECISION bits.
   """
@@ -52,10 +52,10 @@ class DecoderState(ScaledRangesState):
   State for the decoder in Arithmetic Encoding.
   
   Attributes:
-    code_length (int): the number of bits of the encoded message.
-    code (int): the window of PRECISION (default to 32) bits that we're
+    code_length (int): The number of bits of the encoded message.
+    code (int): The window of PRECISION (default to 32) bits that we're
       currently processing.
-    index (int): the current position of the least significant bit in the code.
+    index (int): The current position of the least significant bit in the code.
   """
 
   code_length: int = field(default=0)
@@ -79,11 +79,11 @@ class ArithmeticCoding:
     return the identical MSB bits. 
 
     Args:
-      state: the lower, upper range of probabilities and underflow_bits for
+      state: The lower, upper range of probabilities and underflow_bits for
         dealing with the underflow condition
 
     Returns:
-      encoded_chunk: the encoded MSB bits.
+      encoded_chunk: The encoded MSB bits.
     """
 
     encoded_chunk = []
@@ -124,10 +124,10 @@ class ArithmeticCoding:
     Attach the remaining bits from the state variable to the encoded bits.
 
     Args:
-      state: the state of current probabilities range.
+      state: The state of current probabilities range.
 
     Returns:
-      encoded_chunk: the remained bits from the probabilities range.
+      encoded_chunk: The remained bits from the probabilities range.
     """
 
     encoded_chunk = []
@@ -144,11 +144,11 @@ class ArithmeticCoding:
     Encode the input data using arithmetic coding.
 
     Args:
-      input: an iterable object that needs to be encoded.
+      input: An iterable object that needs to be encoded.
 
     Returns:
-      encoded: encoded data as a list of bits.
-      length: length of the original data stream.
+      encoded: Encoded data as a list of bits.
+      length: Length of the original data stream.
     """
     state = EncoderState()
     stream, length = self.get_stream(input)
@@ -177,8 +177,8 @@ class ArithmeticCoding:
     these bits: code.
     
     Args:
-      state: the state variable of the current probability range.
-      input: the encoded bits.
+      state: The state variable of the current probability range.
+      input: The encoded bits.
 
     Return:
       None 
@@ -219,8 +219,8 @@ class ArithmeticCoding:
     Turn stream of encoded bits into decoded symbols.
 
     Args:
-      input: the encoded bits.
-      length: the length of original data.
+      input: The encoded bits.
+      length: The length of original data.
 
     Return:
       The decoded stream.
