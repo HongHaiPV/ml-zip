@@ -4,7 +4,7 @@ import bisect
 from abc import ABC, abstractmethod
 from collections import Counter
 
-from . import utils
+import arithmetic_coding.utils as utils
 
 class Estimator(ABC):
 
@@ -110,3 +110,26 @@ class FrequencyEstimator(Estimator):
 
     symbol_idx = bisect.bisect(self.cdf, probability)-1
     return self.symbols[symbol_idx]
+
+
+class AdaptiveEstimator(Estimator):
+
+
+  def get_upper(self, symbol, context):
+    pass
+
+  @abstractmethod
+  def get_lower(self, symbol, context):
+    pass
+
+  @abstractmethod
+  def get_symbol(self, probability_range, context):
+    pass
+
+  @abstractmethod
+  def get_context(self, stream):
+    pass
+    
+  @abstractmethod
+  def get_stream(self, input, stream_type='char'):
+    pass

@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock
 
 from arithmetic_coding.arithmetic_coding import ArithmeticCoding
-from arithmetic_coding.estimator import FrequencyEstimator
+from arithmetic_coding.estimators import FrequencyEstimator
 
 
 ABCD = 'abcddabccadb'
