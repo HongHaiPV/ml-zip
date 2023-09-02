@@ -15,13 +15,13 @@ S_IDX = {'a':0, 'b':1, 'c':2, 'd':3}
 R_IDX = {0:'a', 1:'b', 2:'c', 3:'d'}
 
 
-def dynamic_get_lower(symbol, context):
+def dynamic_get_lower(symbol):
   return L_CDF[S_IDX[symbol]]
 
-def dynamic_get_upper(symbol, context):
+def dynamic_get_upper(symbol):
   return L_CDF[S_IDX[symbol] + 1]
 
-def dynamic_get_symbol(prob, context):
+def dynamic_get_symbol(prob):
   for idx in L_CDF:
     if idx == len(L_CDF)-1:
       return R_IDX[idx]

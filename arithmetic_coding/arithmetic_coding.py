@@ -152,6 +152,7 @@ class ArithmeticCoding:
       length: Length of the original data stream.
     """
     state = EncoderState()
+    self.estimator.mode('encode')
     stream, length = self.get_stream(input)
     encoded = []
 
@@ -162,8 +163,8 @@ class ArithmeticCoding:
       context = self.get_context(stream, idx)
       
       # Update the new lower bound and upper bound from the distribution
-      state.upper = state.lower + int(current_range * self.estimator.get_upper(s, context)) - 1
-      state.lower = state.lower + int(current_range * self.estimator.get_lower(s, context))
+      state.upper = state.lower + int(current_range * self.estimator.get_upper(s)) - 1
+      state.lower = state.lower + int(current_range * self.estimator.get_lower(s))
       encoded += self.append_bits(state)
     
     encoded += self.append_remain_bits(state)
@@ -229,7 +230,7 @@ class ArithmeticCoding:
 
     """
     state = DecoderState(code_length=len(input))
-
+    self.estimator.mode('decode')
     for i in range(PRECISION):
       state.code <<= 1
       if state.index < state.code_length:
@@ -250,15 +251,15 @@ class ArithmeticCoding:
       prob_range = (state.code - state.lower + 1) / current_range
       
       # Get context to get current symbol's probability
-      context = self.get_context(out_stream, count)
-      symbol = self.estimator.get_symbol(prob_range, context)
+      self.get_context(out_stream, count)
+      symbol = self.estimator.get_symbol(prob_range)
       out_stream.append(symbol)
       count += 1
       
       state.upper = state.lower + int(current_range * self.estimator.get_upper
-        (symbol, context)) - 1
+        (symbol)) - 1
       state.lower = state.lower + int(current_range * self.estimator.get_lower
-        (symbol, context))
+        (symbol))
       
       self.parse_encoded_bits(state, input)
 

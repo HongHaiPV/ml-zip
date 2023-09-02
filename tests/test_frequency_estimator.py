@@ -32,18 +32,18 @@ def test_fit(frequency_table):
   assert all(x1 == x2 for x1, x2 in zip(frequency_table.cdf, expected))
 
 def test_get_upper(frequency_table):
-  assert frequency_table.get_upper('a', None) == 0.25
-  assert frequency_table.get_upper('d', None) == 1.0
+  assert frequency_table.get_upper('a') == 0.25
+  assert frequency_table.get_upper('d') == 1.0
 
 def test_get_lower(frequency_table):
-  assert frequency_table.get_lower('a', None) == 0
-  assert frequency_table.get_lower('d', None) == 0.75
+  assert frequency_table.get_lower('a') == 0
+  assert frequency_table.get_lower('d') == 0.75
 
 def test_get_symbol(frequency_table):
-  assert frequency_table.get_symbol(0.1, None) == 'a'
-  assert frequency_table.get_symbol(0.0, None) == 'a'
-  assert frequency_table.get_symbol(0.75999, None) == 'd'
-  assert frequency_table.get_symbol(0.99999, None) == 'd'
+  assert frequency_table.get_symbol(0.1) == 'a'
+  assert frequency_table.get_symbol(0.0) == 'a'
+  assert frequency_table.get_symbol(0.75999) == 'd'
+  assert frequency_table.get_symbol(0.99999) == 'd'
 
 @pytest.mark.parametrize('mode, expected', testcase_encode_decode)
 def test_encode_decode(mode, expected):
