@@ -1,10 +1,10 @@
-from collections import Counter
 from dataclasses import dataclass, field
 
 PRECISION = 32
 MSB_MASK = 1 << PRECISION - 1 
 SMSB_MASK = 1 << PRECISION - 2
-SIGN_MASK = (1<<PRECISION) - 1
+SIGN_MASK = (1 << PRECISION) - 1
+
 
 @dataclass
 class ScaledRangesState:
@@ -34,6 +34,7 @@ class ScaledRangesState:
 
     return self.upper - self.lower + 1 
 
+
 @dataclass
 class EncoderState(ScaledRangesState):
   """
@@ -45,6 +46,7 @@ class EncoderState(ScaledRangesState):
   """
 
   underflow_bits: int = field(default=0)
+
 
 @dataclass
 class DecoderState(ScaledRangesState):
@@ -73,7 +75,8 @@ class ArithmeticCoding:
     self.get_context = estimator.get_context
     self.get_stream = estimator.get_stream
 
-  def append_bits(self, state):
+  @staticmethod
+  def append_bits(state):
     """
     Continuously convert the input stream into the range of probabilities and 
     return the identical MSB bits. 
@@ -118,8 +121,8 @@ class ArithmeticCoding:
       state.lower &= SIGN_MASK
       state.upper &= SIGN_MASK
 
-
-  def append_remain_bits(self, state):
+  @staticmethod
+  def append_remain_bits(state):
     """
     Attach the remaining bits from the state variable to the encoded bits.
 
@@ -130,14 +133,12 @@ class ArithmeticCoding:
       encoded_chunk: The remained bits from the probabilities range.
     """
 
-    encoded_chunk = []
-    encoded_chunk.append((state.lower & SMSB_MASK) != 0)
+    encoded_chunk = [(state.lower & SMSB_MASK) != 0]
     
     state.underflow_bits += 1
     for _ in range(state.underflow_bits):
       encoded_chunk.append((state.lower & SMSB_MASK) == 0)
     return encoded_chunk
-
 
   def encode(self, input):
     """
@@ -158,7 +159,7 @@ class ArithmeticCoding:
       current_range = state.get_range()
       
       # Get context from input for the statistical model
-      context = self.get_context(stream, index)
+      context = self.get_context(stream, idx)
       
       # Update the new lower bound and upper bound from the distribution
       state.upper = state.lower + int(current_range * self.estimator.get_upper(s, context)) - 1
@@ -242,7 +243,6 @@ class ArithmeticCoding:
       # Stop decode when reach the original length
       if count == length:
         break
-      count += 1
       
       current_range = state.get_range()
       
@@ -252,8 +252,8 @@ class ArithmeticCoding:
       # Get context to get current symbol's probability
       context = self.get_context(out_stream, count)
       symbol = self.estimator.get_symbol(prob_range, context)
-    
       out_stream.append(symbol)
+      count += 1
       
       state.upper = state.lower + int(current_range * self.estimator.get_upper
         (symbol, context)) - 1
@@ -261,4 +261,5 @@ class ArithmeticCoding:
         (symbol, context))
       
       self.parse_encoded_bits(state, input)
+
     return out_stream

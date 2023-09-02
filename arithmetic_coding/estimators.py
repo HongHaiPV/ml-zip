@@ -8,6 +8,12 @@ import arithmetic_coding.utils as utils
 
 class Estimator(ABC):
 
+  def __init__(self):
+    self.symbols = None
+    self.indices = None
+    self.num_symbols = 0
+    self.cdf = None
+
   @abstractmethod
   def get_upper(self, symbol, context):
     pass
@@ -21,11 +27,11 @@ class Estimator(ABC):
     pass
 
   @abstractmethod
-  def get_context(self, stream):
+  def get_stream(self, input):
     pass
-    
+
   @abstractmethod
-  def get_stream(self, input, stream_type='char'):
+  def get_context(self, stream, index):
     pass
 
 class FrequencyEstimator(Estimator):
@@ -34,6 +40,7 @@ class FrequencyEstimator(Estimator):
   """
 
   def __init__(self, stream_type):
+    super().__init__()
     self.stream_type = stream_type
     
     
@@ -42,26 +49,13 @@ class FrequencyEstimator(Estimator):
     Learn the data's frequency.
     """
     stream, length = self.get_stream(data)
-    self.counter = Counter(stream)
-    self.total = sum(self.counter.values())
-    self.symbols = sorted(self.counter.keys())
-    self.index = {s:idx for idx, s in enumerate(self.symbols)}
-    self.probability = np.array([self.counter[s] for s in self.symbols])
-    self.probability = self.probability/self.total
-    self.cdf = np.array([self.probability[:idx].sum() for idx in range(len(self.symbols))])
-    self.cdf = np.append(self.cdf, [1.0])
-
-
-  def get_context(self, stream):
-    """
-    This estimator is a fixed context.
-    """
-
-    pass
-
-  def get_stream(self, input):
-
-    return utils.get_stream_text(input, mode=self.stream_type)
+    counter = Counter(stream)
+    self.symbols = sorted(counter.keys())
+    self.num_symbols = len(self.symbols)
+    self.indices = {s: idx for idx, s in enumerate(self.symbols)}
+    probability = np.array([counter[s] for s in self.symbols])
+    probability = probability / sum(counter.values())
+    self.cdf = np.array([probability[:idx].sum() for idx in range(self.num_symbols)])
 
   def get_upper(self, symbol, context):
     """
@@ -76,9 +70,9 @@ class FrequencyEstimator(Estimator):
       Probability in the [0, 1] range.
     """
 
-    if self.index[symbol] == len(self.symbols)-1:
-      return 1
-    return self.cdf[self.index[symbol] + 1]
+    if self.indices[symbol] == self.num_symbols - 1:
+      return 1.0
+    return self.cdf[self.indices[symbol] + 1]
 
   def get_lower(self, symbol, context):
     """
@@ -92,7 +86,7 @@ class FrequencyEstimator(Estimator):
       Probability in the [0, 1) range.
     """
 
-    return self.cdf[self.index[symbol]]
+    return self.cdf[self.indices[symbol]]
 
   def get_symbol(self, probability, context):
     """
@@ -100,7 +94,103 @@ class FrequencyEstimator(Estimator):
     search.
 
     Args:
-      probability: The representative value of current probability range [a, b]
+      probability: The representative value of current probability range [a, b)
+      where a <= probability < b.
+      context: Not used.
+
+    Return:
+      The corresponding symbol to the probability range.
+    """
+    if context:
+      self.update_cdf(context)
+    symbol_idx = bisect.bisect(self.cdf, probability) - 1
+    return self.symbols[symbol_idx]
+
+  def get_context(self, stream, index):
+    """
+    This estimator is a fixed context.
+    """
+
+    pass
+
+  def get_stream(self, input):
+
+    return utils.get_stream_text(input, mode=self.stream_type)
+
+
+class AdaptiveFrequencyEstimator(Estimator):
+  """
+  A naive implementation of adaptive frequency counter. At each encoding or
+  decoding step, the estimator get the context as a window and re-calculate
+  the CDF of all the symbols. For this reason, the complexity is O(
+  N*window_length), where N is number of symbols.
+  """
+  def __init__(self, stream_type, context_width):
+    super().__init__()
+    self.stream_type = stream_type
+    self.context_width = context_width
+
+  def fit(self, data):
+    self.eps = 0.1
+    stream, length = self.get_stream(data)
+    self.symbols = sorted(set(stream))
+    self.num_symbols = len(self.symbols)
+    self.indices = {s: idx for idx, s in enumerate(self.symbols)}
+    self.update_cdf([])
+
+  def get_context(self, stream, index):
+    if index < self.context_width:
+      context = stream[:index]
+    else:
+      context = stream[index-self.context_width:index]
+    self.update_cdf(context)
+    return context
+
+  def update_cdf(self, context):
+    counter = Counter(context)
+    csum = [0]
+    for symbol in self.symbols:
+      csum.append(counter.get(symbol, self.eps) + csum[-1])
+    self.cdf = [x / csum[-1] for x in csum]
+
+  def get_upper(self, symbol, context):
+    """
+    Get the CDF of the current symbol's index + 1.
+    If it's the last index, rounding up to 1.
+
+    Args:
+      symbol: A symbol from the stream of data.
+      context: Not used.
+
+    Return:
+      Probability in the [0, 1] range.
+    """
+
+    if self.indices[symbol] == self.num_symbols - 1:
+      return 1.0
+    return self.cdf[self.indices[symbol] + 1]
+
+  def get_lower(self, symbol, context):
+    """
+    Get the CDF of the current symbol's index.
+
+    Args:
+      symbol: A symbol from the stream of data.
+      context: Not used.
+
+    Return:
+      Probability in the [0, 1) range.
+    """
+
+    return self.cdf[self.indices[symbol]]
+
+  def get_symbol(self, probability, context):
+    """
+    Find the corresponding symbol from given probability range using binary
+    search.
+
+    Args:
+      probability: The representative value of current probability range [a, b)
       where a <= probability < b.
       context: Not used.
 
@@ -108,28 +198,8 @@ class FrequencyEstimator(Estimator):
       The corresponding symbol to the probability range.
     """
 
-    symbol_idx = bisect.bisect(self.cdf, probability)-1
+    symbol_idx = bisect.bisect(self.cdf, probability) - 1
     return self.symbols[symbol_idx]
 
-
-class AdaptiveEstimator(Estimator):
-
-
-  def get_upper(self, symbol, context):
-    pass
-
-  @abstractmethod
-  def get_lower(self, symbol, context):
-    pass
-
-  @abstractmethod
-  def get_symbol(self, probability_range, context):
-    pass
-
-  @abstractmethod
-  def get_context(self, stream):
-    pass
-    
-  @abstractmethod
-  def get_stream(self, input, stream_type='char'):
-    pass
+  def get_stream(self, input):
+    return utils.get_stream_text(input, mode=self.stream_type)
