@@ -183,7 +183,7 @@ class ArithmeticCoding:
       current_range = state.get_range()
       
       # Get context from input for the statistical model
-      context = self.get_context(stream, idx)
+      context = self.get_context(stream, idx-1)
       
       # Update the new lower bound and upper bound from the distribution
       state.upper = state.lower + int(current_range * self.estimator.get_upper(s)) - 1
@@ -274,7 +274,7 @@ class ArithmeticCoding:
       prob_range = (state.code - state.lower + 1) / current_range
       
       # Get context to get current symbol's probability
-      self.get_context(out_stream, count)
+      self.get_context(out_stream, count - 1)
       symbol = self.estimator.get_symbol(prob_range)
       out_stream.append(symbol)
       count += 1
