@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
 PRECISION = 32
-MSB_MASK = 1 << PRECISION - 1 
+MSB_MASK = 1 << PRECISION - 1
 SMSB_MASK = 1 << PRECISION - 2
 SIGN_MASK = (1 << PRECISION) - 1
 
@@ -68,6 +68,18 @@ class DecoderState(ScaledRangesState):
 class ArithmeticCoding:
   """
   A class for encoding and decoding data using the Arithmetic Encoding algorithm.
+
+  When implemented as infinite precision using integers, the lower and upper
+  can converge around 0.5 where lower takes the form of 0b011111..., upper
+  takes the form of 0b100000... and the MSB bits can never match. We can
+  avoid this problem by removing the second MSB bits from both lower and
+  upper when they are 0b01... and 0b10... respectively and keep track of the
+  number of occurrences. Eventually, when the MSB bits of lower and upper
+  match, we can know that where lower and upper is now either smaller or larger
+  than 0.5. If it's smaller, both lower and upper should take the form of 0b01
+  followed by finite number of digits and vice versa. That means, when the MSB
+  matching happens, we can reconstruct the discarded underflow bits by
+  reversing the matched MSB bit.
   """
 
   def __init__(self, estimator):
@@ -79,7 +91,7 @@ class ArithmeticCoding:
   def append_bits(state):
     """
     Continuously convert the input stream into the range of probabilities and 
-    return the identical MSB bits. 
+    return the identical MSB bits.
 
     Args:
       state: The lower, upper range of probabilities and underflow_bits for
@@ -90,19 +102,24 @@ class ArithmeticCoding:
     """
 
     encoded_chunk = []
-
     while True:
       if (state.upper & MSB_MASK) == (state.lower & MSB_MASK):
-        # Add most significant bit to output
-        encoded_chunk.append((state.upper & MSB_MASK) != 0)
-        
-        # Add underflow bit to the output
+        # Add the matched MSB to the output
+        encoded_chunk.append((state.lower & MSB_MASK) != 0)
+
+        # Add underflow bits to the output.
+        # It's the reverse of the matched MSB.
         while state.underflow_bits > 0:
           encoded_chunk.append((state.lower & MSB_MASK) == 0)
           state.underflow_bits -= 1
 
-      # Resolve underflow problem self.lower = 011..., self.upper = 100...
-      # Remove second most significant bit
+      # Resolve underflow problem self.lower = 0b01X, self.upper = 0b10Y
+      # where X and Y is any combination of 0s and 1s.
+      # Remove second most significant bit as follows:
+      # lower = 0b01X; lower = lower & 0b00... = 0b00X
+      # upper = 0b10Y; upper = upper | 0b01... = 0b11Y
+      # After that, the MSB bits of both upper and lower will be removed by
+      # left shifting.
       elif (state.lower & SMSB_MASK) and not(state.upper & SMSB_MASK):
         state.underflow_bits += 1
         state.lower &= ~(MSB_MASK | SMSB_MASK)
@@ -116,8 +133,8 @@ class ArithmeticCoding:
       state.upper <<= 1
       state.upper |= 1
 
-      # Remove potential negative sign
-      # i.e. 0x11704454 vs 0x1f704454
+      # Remove potential negative sign causes by Python's large int
+      # implementation i.e. 0x11704454 vs 0x1f704454
       state.lower &= SIGN_MASK
       state.upper &= SIGN_MASK
 
@@ -125,6 +142,11 @@ class ArithmeticCoding:
   def append_remain_bits(state):
     """
     Attach the remaining bits from the state variable to the encoded bits.
+    At this stage, we need to make sure lower <= output < upper.
+    Since the current (lower, upper) can be either (0b00..., 0b11...),
+    (0b00..., 0b10...), or (0b01..., 0b11...) the output only need to take
+    the second MSB of the lower, plus any underflow_bits and another one to
+    satisfy this condition.
 
     Args:
       state: The state of current probabilities range.
@@ -133,8 +155,9 @@ class ArithmeticCoding:
       encoded_chunk: The remained bits from the probabilities range.
     """
 
+    # Get the second MSB bit of the lower.
     encoded_chunk = [(state.lower & SMSB_MASK) != 0]
-    print((state.lower & SMSB_MASK) != 0)
+
     state.underflow_bits += 1
     for _ in range(state.underflow_bits):
       encoded_chunk.append((state.lower & SMSB_MASK) == 0)
@@ -187,11 +210,11 @@ class ArithmeticCoding:
     """
     
     while True:
-      if (state.upper ^ ~state.lower) & MSB_MASK:
+      if (state.upper & MSB_MASK) == (state.lower & MSB_MASK):
         # Only shift bits
         pass
 
-      elif (~state.upper & state.lower) & SMSB_MASK:
+      elif (state.lower & SMSB_MASK) and not(state.upper & SMSB_MASK):
         state.lower &= ~(MSB_MASK | SMSB_MASK)
         state.upper |= SMSB_MASK
         
