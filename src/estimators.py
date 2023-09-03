@@ -4,7 +4,7 @@ import bisect
 from abc import ABC, abstractmethod
 from collections import Counter
 
-import arithmetic_coding.utils as utils
+import utils
 
 
 class Estimator(ABC):

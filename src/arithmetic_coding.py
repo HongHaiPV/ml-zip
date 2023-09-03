@@ -134,7 +134,7 @@ class ArithmeticCoding:
     """
 
     encoded_chunk = [(state.lower & SMSB_MASK) != 0]
-    
+    print((state.lower & SMSB_MASK) != 0)
     state.underflow_bits += 1
     for _ in range(state.underflow_bits):
       encoded_chunk.append((state.lower & SMSB_MASK) == 0)
