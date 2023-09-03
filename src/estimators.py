@@ -123,10 +123,12 @@ class FrequencyEstimator(Estimator):
 
 class AdaptiveFrequencyEstimator(Estimator):
   """
-  A naive implementation of adaptive frequency counter. At each encoding or
-  decoding step, the estimator get the context as a window and re-calculate
-  the CDF of all the symbols. For this reason, the complexity is O(
-  N*window_length), where N is number of symbols.
+  A naive implementation of adaptive frequency counter using Fenwick tree
+  or Binary Index Tree. At each encoding or decoding step, the estimator get
+  the new symbol and the out of context symbol and updating the CDF accordingly.
+  The complexity for initializing the CDF is O(DlogD), for updating and
+  getting CDF for each index is O(logD) where D is number of symbols.
+  TODO: Add more document
   """
 
   def __init__(self, stream_type, context_width):
@@ -136,29 +138,76 @@ class AdaptiveFrequencyEstimator(Estimator):
     self.context_width = context_width
 
   def mode(self, mode):
-    pass
+    if mode == 'encode':
+      self.reset_cdf()
 
+    elif mode == 'decode':
+      self.reset_cdf()
+
+    else:
+      pass
+
+  def reset_cdf(self):
+    self.cdf.reset_cdf()
+    
   def fit(self, data):
-    stream, length = self.get_stream(data)
+    stream, _ = self.get_stream(data)
     self.symbols = sorted(set(stream))
     self.num_symbols = len(self.symbols)
+    self.cdf = self.FenwickTree(self.num_symbols, self.eps)
     self.indices = {s: idx for idx, s in enumerate(self.symbols)}
-    self.update_cdf([])
 
   def get_context(self, stream, index):
-    if index < self.context_width:
-      context = stream[:index]
-    else:
-      context = stream[index - self.context_width:index]
-    self.update_cdf(context)
-    return context
+    if not stream or index < 0:
+      return
+    new_symbol = stream[index]
+    ooc_symbol = stream[index-self.context_width]\
+                 if index >= self.context_width else None
 
-  def update_cdf(self, context):
-    counter = Counter(context)
-    csum = [0]
-    for symbol in self.symbols:
-      csum.append(counter.get(symbol, self.eps) + csum[-1])
-    self.cdf = [x / csum[-1] for x in csum]
+    self.update_cdf(new_symbol, 1)
+    if ooc_symbol:
+      self.update_cdf(ooc_symbol, -1)
+
+  def update_cdf(self, symbol, change):
+    symbol_idx = self.indices[symbol]
+    old_val = self.cdf.query_count(symbol_idx)
+    self.cdf.update_count(symbol_idx, change)
 
   def get_stream(self, input):
     return utils.get_stream_text(input, mode=self.stream_type)
+
+  class FenwickTree:
+    
+    def __init__(self, num_symbols, eps):
+      self.num_symbols = num_symbols
+      self.eps = eps
+      self.bit = None
+      self.reset_cdf()
+
+    def reset_cdf(self):
+      # TODO: Linear initializing
+      self.bit = np.zeros(self.num_symbols + 1)
+      for i in range(self.num_symbols):
+        self.update_count(i, self.eps)
+
+    def update_count(self, x, value):
+      x += 1
+      while x <= self.num_symbols:
+        self.bit[x] += value
+        x += x & -x
+
+    def query_count(self, x):
+      x += 1
+      count = 0
+      while x > 0:
+        count += self.bit[x]
+        x -= x & -x
+      return count
+
+    def __getitem__(self, x):
+      count = self.query_count(x-1)
+      total = self.query_count(self.num_symbols-1)
+      return count / total
+    
+    def __len__(self):
+      return self.num_symbols + 1

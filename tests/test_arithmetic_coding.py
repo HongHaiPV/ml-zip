@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import Mock
 
-from arithmetic_coding.arithmetic_coding import *
+from src.arithmetic_coding import *
 
 LOWER_TEST = 0xabc
 UPPER_TEST = 0xdef
