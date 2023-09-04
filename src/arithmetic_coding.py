@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Iterable, Any
-
-from src.estimators import Estimator
+from estimators import Estimator
 
 PRECISION = 32
 MSB_MASK = 1 << PRECISION - 1

@@ -1,7 +1,8 @@
 from typing import Iterable
 
-def rolling_window_context(stream: Iterable, window_size: int, padding: str,
- index: int):
+
+def rolling_window_context(stream: Iterable, context_width: int, padding: str,
+                           index: int):
   """
   Extract context from the stream giving the window size.
   The padding is used when the index is smaller than the window size - 1.
@@ -16,11 +17,11 @@ def rolling_window_context(stream: Iterable, window_size: int, padding: str,
     List: A window of data.
   """
 
-  if len(stream) < self.context_width - 1:      
-    return [padding] * (self.context_width - len(stream) - 1) + stream
-    
-  return stream[-(self.context_width - 1 - idx):idx]
-  
+  if len(stream) < context_width - 1:
+    return [padding] * (context_width - len(stream) - 1) + stream
+
+  return stream[-(context_width - 1 - index):index]
+
 
 def get_stream_text(input: Iterable, mode: str):
   """
@@ -37,7 +38,7 @@ def get_stream_text(input: Iterable, mode: str):
   # Character model
   if mode == 'char':
     return list(input), len(input)
-  
+
   # Word model
   elif mode == 'word':
     return input.split(' '), len(input.split(' '))
@@ -47,4 +48,4 @@ def get_stream_text(input: Iterable, mode: str):
 
 
 def text2bits(input_string):
-	return list(map(bin, bytearray(input_string)))
+  return list(map(bin, bytearray(input_string)))

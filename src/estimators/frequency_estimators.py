@@ -7,7 +7,6 @@ from typing import Iterable, Any
 
 import utils
 
-
 class Estimator(ABC):
   """
   The abstract class for estimators.
