@@ -18,7 +18,7 @@ class Estimator(ABC):
     self.num_symbols = None
     self.cdf = None
 
-  def get_upper(self, symbol: int) -> float:
+  def get_upper(self, symbol: str) -> float:
     """
     Get the CDF of the current symbol's index + 1.
     If it's the last index, rounding up to 1.
@@ -116,7 +116,7 @@ class FrequencyEstimator(Estimator):
 
     pass
 
-  def get_stream(self, data: Iterable[Any]) -> None:
+  def get_stream(self, data: Iterable[Any]) -> (Iterable[Any], int):
     return utils.get_stream_text(data, mode=self.stream_type)
 
   def mode(self, mode: str) -> None:
