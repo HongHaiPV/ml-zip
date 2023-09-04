@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Iterable, Any
+from typing import Sequence, Any
 from estimators import Estimator
 
 PRECISION = 32
@@ -166,12 +166,12 @@ class ArithmeticCoding:
       encoded_chunk.append((state.lower & SMSB_MASK) == 0)
     return encoded_chunk
 
-  def encode(self, data: Iterable[Any]):
+  def encode(self, data: Sequence[Any]):
     """
     Encode the input data using arithmetic coding.
 
     Args:
-      data: An iterable object that needs to be encoded.
+      data: An list-like object that needs to be encoded.
 
     Returns:
       encoded: Encoded data as a list of bits.
@@ -200,7 +200,7 @@ class ArithmeticCoding:
     return encoded, length
 
   @staticmethod
-  def parse_encoded_bits(state: DecoderState, data: Iterable[Any]):
+  def parse_encoded_bits(state: DecoderState, data: Sequence[Any]):
     """
     Digest the encoded bits and update the decoder state accordingly.
     

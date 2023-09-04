@@ -3,7 +3,7 @@ import bisect
 
 from abc import ABC, abstractmethod
 from collections import Counter
-from typing import Iterable, Any
+from typing import Sequence, Any, List, Dict, Tuple, overload
 
 import utils
 
@@ -12,10 +12,10 @@ class Estimator(ABC):
   The abstract class for estimators.
   """
   def __init__(self) -> None:
-    self.symbols = None
-    self.indices = None
-    self.num_symbols = None
-    self.cdf = None
+    self.symbols: List[str] = []
+    self.indices: Dict[str, int] = {}
+    self.num_symbols: int = 0
+    self.cdf: Sequence[float] = []
 
   def get_upper(self, symbol: str) -> float:
     """
@@ -63,11 +63,11 @@ class Estimator(ABC):
     return self.symbols[symbol_idx]
 
   @abstractmethod
-  def get_stream(self, data: Iterable[Any]) -> Iterable[Any]:
+  def get_stream(self, data: Sequence[Any]) -> Sequence[Any]:
     pass
 
   @abstractmethod
-  def get_context(self, stream: Iterable[Any], index: int) -> None:
+  def get_context(self, stream: Sequence[Any], index: int) -> None:
     pass
 
   @abstractmethod
@@ -94,7 +94,7 @@ class FrequencyEstimator(Estimator):
     super().__init__()
     self.stream_type = stream_type
 
-  def fit(self, data: Iterable[Any]) -> None:
+  def fit(self, data: Sequence[Any]) -> None:
     """
     Learn the data's frequency.
     """
@@ -108,14 +108,14 @@ class FrequencyEstimator(Estimator):
     self.cdf = np.array(
       [probability[:idx].sum() for idx in range(self.num_symbols)])
 
-  def get_context(self, stream: Iterable[Any], index: int) -> None:
+  def get_context(self, stream: Sequence[Any], index: int) -> None:
     """
     This estimator is a fixed context.
     """
 
     pass
 
-  def get_stream(self, data: Iterable[Any]) -> (Iterable[Any], int):
+  def get_stream(self, data: Sequence[Any]) -> Tuple[Sequence[Any], int]:
     return utils.get_stream_text(data, mode=self.stream_type)
 
   def mode(self, mode: str) -> None:
@@ -163,7 +163,7 @@ class AdaptiveFrequencyEstimator(Estimator):
   def reset_cdf(self):
     self.cdf.reset()
     
-  def fit(self, data: Iterable[Any]) -> None:
+  def fit(self, data: Sequence[Any]) -> None:
     """
     Build the look-up table for the symbols in the data.
 
@@ -176,10 +176,10 @@ class AdaptiveFrequencyEstimator(Estimator):
     stream, _ = self.get_stream(data)
     self.symbols = sorted(set(stream))
     self.num_symbols = len(self.symbols)
-    self.cdf = self.FenwickTreeCDF(self.num_symbols, self.eps)
+    self.cdf = self.FenwickTreeCDF(self.num_symbols, self.eps) # type: ignore
     self.indices = {s: idx for idx, s in enumerate(self.symbols)}
 
-  def get_context(self, stream: Iterable[Any], index: int) -> None:
+  def get_context(self, stream: Sequence[Any], index: int) -> None:
     """
     Get the context and updating the probabilities accordingly.
     When invoked, the function gets the new symbol in the window context and
@@ -217,7 +217,7 @@ class AdaptiveFrequencyEstimator(Estimator):
       None
     """
     symbol_idx = self.indices[symbol]
-    self.cdf.update_count(symbol_idx + 1, change)
+    self.cdf.update_count(symbol_idx + 1, change) # type: ignore
 
   def get_stream(self, data):
     return utils.get_stream_text(data, mode=self.stream_type)
@@ -228,9 +228,9 @@ class AdaptiveFrequencyEstimator(Estimator):
     frequency table. This algorithm allows the update and query operator to
     perform both in the logarithmic time.
 
-    This class can be invoked as an iterable. For example, FenwickTreeCDF()[
-    10] will return the cumulative distribution of the first 10 symbols (
-    0th -> 9th).
+    This class can be invoked as a list-like object. For example,
+    FenwickTreeCDF()[10] will return the cumulative distribution of the first
+    10 symbols (0th -> 9th).
     """
 
     def __init__(self, num_symbols: int, eps: float = 0.1) -> None:
@@ -244,13 +244,12 @@ class AdaptiveFrequencyEstimator(Estimator):
       Returns:
         None.
       """
-
-      self.num_symbols = num_symbols
-      self.eps = eps
-      self.bit = None
+      self.num_symbols: int = num_symbols
+      self.eps: float = eps
+      self.bit: List[int] = []
       self.reset()
 
-    def __getitem__(self, x: int) -> float:
+    def __getitem__(self, key: int) -> float:
       """
       Make the object list-like.
 
@@ -259,9 +258,14 @@ class AdaptiveFrequencyEstimator(Estimator):
 
       Returns:
         Cumulative probability of the x-th index.
-      """
 
-      count = self.query_count(x)
+      Raises:
+        IndexError().
+      """
+      if key < 0 or key > self.num_symbols:
+        raise IndexError()
+
+      count = self.query_count(key)
       total = self.query_count(self.num_symbols)
       return count / total
 
@@ -277,7 +281,7 @@ class AdaptiveFrequencyEstimator(Estimator):
       """
       self.bit = np.zeros(self.num_symbols + 1)
       for i in range(self.num_symbols):
-        self.bit[i+1] += self.eps
+        self.bit[i+1] += self.eps # type: ignore
         if i + (i & -i) <= self.num_symbols:
           self.bit[i + (i & -i)] += self.bit[i]
 
