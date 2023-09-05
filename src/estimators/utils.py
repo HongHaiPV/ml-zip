@@ -9,7 +9,7 @@ def rolling_window_context(stream: Iterable, context_width: int, padding: str,
 
   Args:
     stream (Iterable): Iterable containing the stream data.
-    window_size (int): The size of the rolling window.
+    context_width (int): The size of the rolling window.
     padding (str): Special character used to denote the boudary.
     index (int): The current end of the window.
 

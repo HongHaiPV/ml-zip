@@ -1,3 +1,7 @@
+"""
+Core classes for arithmetic coding.
+"""
+
 from dataclasses import dataclass, field
 from typing import Sequence, Any
 from estimators import Estimator
@@ -34,7 +38,7 @@ class ScaledRangesState:
       The current range, represented by an integer.
     """
 
-    return self.upper - self.lower + 1 
+    return self.upper - self.lower + 1
 
 
 @dataclass
@@ -54,7 +58,7 @@ class EncoderState(ScaledRangesState):
 class DecoderState(ScaledRangesState):
   """
   State for the decoder in Arithmetic Encoding.
-  
+
   Attributes:
     code_length (int): The number of bits of the encoded message.
     code (int): The window of PRECISION (default to 32) bits that we're
@@ -93,7 +97,7 @@ class ArithmeticCoding:
   @staticmethod
   def append_bits(state: EncoderState):
     """
-    Continuously convert the input stream into the range of probabilities and 
+    Continuously convert the input stream into the range of probabilities and
     return the identical MSB bits.
 
     Args:
@@ -123,14 +127,14 @@ class ArithmeticCoding:
       # upper = 0b10Y; upper = upper | 0b01... = 0b11Y
       # After that, the MSB bits of both upper and lower will be removed by
       # left shifting.
-      elif (state.lower & SMSB_MASK) and not(state.upper & SMSB_MASK):
+      elif state.lower & SMSB_MASK and not state.upper & SMSB_MASK:
         state.underflow_bits += 1
         state.lower &= ~(MSB_MASK | SMSB_MASK)
         state.upper |= SMSB_MASK
-        
+
       else:
         return encoded_chunk
-      
+
       # Remove the most significant bit
       state.lower <<= 1
       state.upper <<= 1
@@ -183,19 +187,19 @@ class ArithmeticCoding:
     stream, length = self.get_stream(data)
     encoded = []
 
-    for idx, s in enumerate(stream):
+    for idx, symbol in enumerate(stream):
       current_range = state.get_range()
-      
+
       # Get context from data for the statistical model
       self.get_context(stream, idx-1)
-      
+
       # Update the new lower bound and upper bound from the distribution
       state.upper = (state.lower
-                     + int(current_range * self.estimator.get_upper(s)) - 1)
+                     + int(current_range * self.estimator.get_upper(symbol)) - 1)
       state.lower = (state.lower
-                     + int(current_range * self.estimator.get_lower(s)))
+                     + int(current_range * self.estimator.get_lower(symbol)))
       encoded += self.append_bits(state)
-    
+
     encoded += self.append_remain_bits(state)
     return encoded, length
 
@@ -203,30 +207,30 @@ class ArithmeticCoding:
   def parse_encoded_bits(state: DecoderState, data: Sequence[Any]):
     """
     Digest the encoded bits and update the decoder state accordingly.
-    
+
     The decoder state contains lower and upper probability range, the current
     index of the data encoded bits and the current working windows on
     these bits: code.
-    
+
     Args:
       state: The state variable of the current probability range.
       data: The encoded bits.
 
     Return:
-      None 
+      None
     """
-    
+
     while True:
       if (state.upper & MSB_MASK) == (state.lower & MSB_MASK):
         # Only shift bits
         pass
 
-      elif (state.lower & SMSB_MASK) and not(state.upper & SMSB_MASK):
+      elif state.lower & SMSB_MASK and not state.upper & SMSB_MASK:
         state.lower &= ~(MSB_MASK | SMSB_MASK)
         state.upper |= SMSB_MASK
-        
+
         # Remove the 2nd MSB from code
-        # Note that state.lower = 01... 
+        # Note that state.lower = 01...
         # and state.upper = 10...
         state.code ^= SMSB_MASK
 
@@ -242,13 +246,13 @@ class ArithmeticCoding:
       # implementation i.e. 0x11704454 vs 0x1f704454
       state.lower &= SIGN_MASK
       state.upper &= SIGN_MASK
-      
+
       state.code <<= 1
       state.code &= SIGN_MASK
       if state.index < state.code_length:
         state.code |= data[state.index]
         state.index += 1
-      
+
   def decode(self, data, length):
     """
     Turn stream of encoded bits into decoded symbols.
@@ -265,7 +269,7 @@ class ArithmeticCoding:
     state = DecoderState(code_length=len(data))
     self.estimator.mode('decode')
 
-    for i in range(PRECISION):
+    for _ in range(PRECISION):
       state.code <<= 1
       if state.index < state.code_length:
         state.code |= data[state.index]
@@ -273,23 +277,23 @@ class ArithmeticCoding:
 
     out_stream = []
     count = 0
-    
+
     while True:
       # Stop decode when reach the original length
       if count == length:
         break
-      
+
       current_range = state.get_range()
-      
+
       # Calculative the cummulative probability range
       prob_range = (state.code - state.lower + 1) / current_range
-      
+
       # Get context to get current symbol's probability
       self.get_context(out_stream, count - 1)
       symbol = self.estimator.get_symbol(prob_range)
       out_stream.append(symbol)
       count += 1
-      
+
       state.upper = (state.lower
                      + int(current_range * self.estimator.get_upper(symbol))-1)
       state.lower = (state.lower

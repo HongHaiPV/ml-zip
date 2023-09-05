@@ -1,16 +1,21 @@
-import numpy as np
-import bisect
+"""
+Classes for counter-based estimators.
+"""
 
+import bisect
 from abc import ABC, abstractmethod
 from collections import Counter
-from typing import Sequence, Any, List, Dict, Tuple, overload
+from typing import Sequence, Any, List, Dict, Tuple
+import numpy as np
 
 import utils
+
 
 class Estimator(ABC):
   """
   The abstract class for estimators.
   """
+
   def __init__(self) -> None:
     self.symbols: List[str] = []
     self.indices: Dict[str, int] = {}
@@ -64,11 +69,29 @@ class Estimator(ABC):
 
   @abstractmethod
   def get_stream(self, data: Sequence[Any]) -> Sequence[Any]:
-    pass
+    """
+    Turn data into stream of encodeable symbols.
+
+    Args:
+      data: The original data that need to be encoded.
+
+    Returns:
+      Sequence of symbols.
+    """
 
   @abstractmethod
   def get_context(self, stream: Sequence[Any], index: int) -> None:
-    pass
+    """
+    Extract the context from the current window and update the model
+    accordingly.
+
+    Args:
+      stream: The sequence of symbols.
+      index: The current index of the window.
+
+    Returns:
+      None.
+    """
 
   @abstractmethod
   def mode(self, mode: str) -> None:
@@ -82,7 +105,6 @@ class Estimator(ABC):
     Returns:
       None.
     """
-    pass
 
 
 class FrequencyEstimator(Estimator):
@@ -98,24 +120,35 @@ class FrequencyEstimator(Estimator):
     """
     Learn the data's frequency.
     """
-    stream, length = self.get_stream(data)
+    stream, _ = self.get_stream(data)
     counter = Counter(stream)
     self.symbols = sorted(counter.keys())
     self.num_symbols = len(self.symbols)
     self.indices = {s: idx for idx, s in enumerate(self.symbols)}
     probability = np.array([counter[s] for s in self.symbols])
     probability = probability / sum(counter.values())
-    self.cdf = np.array(
-      [probability[:idx].sum() for idx in range(self.num_symbols)])
+    self.cdf = np.array([probability[:idx].sum()
+                         for idx in range(self.num_symbols)])
 
   def get_context(self, stream: Sequence[Any], index: int) -> None:
     """
     This estimator is a fixed context.
     """
 
-    pass
+    return None
 
   def get_stream(self, data: Sequence[Any]) -> Tuple[Sequence[Any], int]:
+    """
+    Using the text stream function, split data based on characters or words.
+
+    Args:
+      data: The original data that need to be encoded.
+
+    Returns:
+      A sequence of symbols.
+      The length of that sequence.
+    """
+
     return utils.get_stream_text(data, mode=self.stream_type)
 
   def mode(self, mode: str) -> None:
@@ -161,8 +194,15 @@ class AdaptiveFrequencyEstimator(Estimator):
       pass
 
   def reset_cdf(self):
+    """
+    Reset the current CDF.
+
+    Returns:
+      None
+    """
+
     self.cdf.reset()
-    
+
   def fit(self, data: Sequence[Any]) -> None:
     """
     Build the look-up table for the symbols in the data.
@@ -176,7 +216,7 @@ class AdaptiveFrequencyEstimator(Estimator):
     stream, _ = self.get_stream(data)
     self.symbols = sorted(set(stream))
     self.num_symbols = len(self.symbols)
-    self.cdf = self.FenwickTreeCDF(self.num_symbols, self.eps) # type: ignore
+    self.cdf = self.FenwickTreeCDF(self.num_symbols, self.eps)  # type: ignore
     self.indices = {s: idx for idx, s in enumerate(self.symbols)}
 
   def get_context(self, stream: Sequence[Any], index: int) -> None:
@@ -196,7 +236,7 @@ class AdaptiveFrequencyEstimator(Estimator):
     if not stream or index < 0:
       return
     new_symbol = stream[index]
-    ooc_symbol = stream[index-self.context_width] if \
+    ooc_symbol = stream[index - self.context_width] if \
       (index >= self.context_width) else None
 
     self.update_cdf(new_symbol, 1)
@@ -217,9 +257,20 @@ class AdaptiveFrequencyEstimator(Estimator):
       None
     """
     symbol_idx = self.indices[symbol]
-    self.cdf.update_count(symbol_idx + 1, change) # type: ignore
+    self.cdf.update_count(symbol_idx + 1, change)  # type: ignore
 
   def get_stream(self, data):
+    """
+    Using the text stream function, split data based on characters or words.
+
+    Args:
+      data: The original data that need to be encoded.
+
+    Returns:
+      A sequence of symbols.
+      The length of that sequence.
+    """
+
     return utils.get_stream_text(data, mode=self.stream_type)
 
   class FenwickTreeCDF:
@@ -254,7 +305,7 @@ class AdaptiveFrequencyEstimator(Estimator):
       Make the object list-like.
 
       Args:
-        x: A 0-based index.
+        key: A 0-based index.
 
       Returns:
         Cumulative probability of the x-th index.
@@ -281,41 +332,41 @@ class AdaptiveFrequencyEstimator(Estimator):
       """
       self.bit = np.zeros(self.num_symbols + 1)
       for i in range(self.num_symbols):
-        self.bit[i+1] += self.eps # type: ignore
+        self.bit[i + 1] += self.eps  # type: ignore
         if i + (i & -i) <= self.num_symbols:
           self.bit[i + (i & -i)] += self.bit[i]
 
-    def update_count(self, x: int, value: int) -> None:
+    def update_count(self, key: int, value: int) -> None:
       """
       Update the frequency of the counter for the (x-1)-th symbol with a
       'value' amount along with the cumulative counter for all symbols after
       that in O(logD).
 
       Args:
-        x: The 0-based index of the symbol that changes in frequency.
+        key: The 0-based index of the symbol that changes in frequency.
         value: The changed amount.
 
       Returns:
         None
       """
 
-      while x <= self.num_symbols:
-        self.bit[x] += value
-        x += x & -x
+      while key <= self.num_symbols:
+        self.bit[key] += value
+        key += key & -key
 
-    def query_count(self, x: int) -> int:
+    def query_count(self, key: int) -> int:
       """
       Query the cumulative frequency of the (x-1)-th symbol.
 
       Args:
-        x: The 0-based index of the symbol.
+        key: The 0-based index of the symbol.
 
       Returns:
         Cumulative frequency from the 0th to the (x-1)th symbol.
       """
 
       count = 0
-      while x > 0:
-        count += self.bit[x]
-        x -= x & -x
+      while key > 0:
+        count += self.bit[key]
+        key -= key & -key
       return count
