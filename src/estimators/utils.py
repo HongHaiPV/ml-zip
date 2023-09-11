@@ -10,17 +10,17 @@ def rolling_window_context(stream: Iterable, context_width: int, padding: str,
   Args:
     stream (Iterable): Iterable containing the stream data.
     context_width (int): The size of the rolling window.
-    padding (str): Special character used to denote the boudary.
+    padding (str): Special character used to denote the boundary.
     index (int): The current end of the window.
 
   Returns:
     List: A window of data.
   """
 
-  if len(stream) < context_width - 1:
-    return [padding] * (context_width - len(stream) - 1) + stream
+  if index < context_width:
+    return [padding] * (context_width - index) + stream[:index]
 
-  return stream[-(context_width - 1 - index):index]
+  return stream[index - context_width:index]
 
 
 def get_stream_text(input: Iterable, mode: str):
