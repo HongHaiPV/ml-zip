@@ -1,4 +1,5 @@
-from typing import Iterable
+from typing import Iterable, Any, IO
+import sys
 
 
 def rolling_window_context(stream: Iterable, context_width: int, padding: str,
@@ -49,3 +50,33 @@ def get_stream_text(input: Iterable, mode: str):
 
 def text2bits(input_string):
   return list(map(bin, bytearray(input_string)))
+
+
+def progressbar(it: Iterable[Any],
+                prefix: str = '',
+                size: int = 60,
+                out: IO = sys.stdout):
+  """
+  Print out progress bar.
+
+  Args:
+    it (Iterable): An iterable to loop through and print progress.
+    prefix (str): The string before the bar, default: empty.
+    size (int): The size of the bar, default: 60.
+    out (IO): Output destination, default: sys.stdout.
+
+  Returns:
+    None
+  """
+  count = len(it)
+
+  def show(j):
+    x = int(size * j / count)
+    print(f"{prefix}[{u'█' * x}{('.' * (size - x))}] {j}/{count}", end='\r',
+          file=out, flush=True)
+
+  show(0)
+  for i, item in enumerate(it):
+    yield item
+    show(i + 1)
+  print("\n", flush=True, file=out)
