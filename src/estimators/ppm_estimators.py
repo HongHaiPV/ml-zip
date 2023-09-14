@@ -1,21 +1,30 @@
 """
 Classes for prediction by partial matching estimators.
 """
+from __future__ import annotations
 
 import logging
+import pickle
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-
+import pickle as pkl
 import numpy as np
-from typing import Sequence, Any
+from typing import Sequence, Any, Tuple
 
 import utils
 from frequency_estimators import Estimator
 
 torch.set_printoptions(precision=10)
 torch.set_default_tensor_type(torch.DoubleTensor)
+
+logging.basicConfig(filename='training.log',
+                    filemode='w',
+                    format='%(name)s - %(levelname)s - %(message)s'
+                    )
+LOGGER = logging.getLogger()
+LOGGER.setLevel(logging.INFO)
 
 
 class PPMEstimator(Estimator):
@@ -24,7 +33,11 @@ class PPMEstimator(Estimator):
   the model's configs.
   """
 
-  def __init__(self, stream_type, context_width, model_type, model_configs):
+  def __init__(self, stream_type: str,
+               context_width: int,
+               model_type: Any,
+               model_configs: dict) -> None:
+
     super().__init__()
     self.stream_type = stream_type
     self.context_width = context_width
@@ -46,12 +59,14 @@ class PPMEstimator(Estimator):
     Returns:
       None.
     """
+
     context = utils.rolling_window_context(stream, self.context_width,
                                            self.padding, index + 1)
     context_ids = [self.indices[i] for i in context]
     self.cdf = self.model.get_cdf(context_ids)
 
-  def load_train_data(self, stream, stream_length):
+  def load_train_data(self, stream: Sequence, stream_length: int)\
+      -> Tuple[Sequence, Sequence]:
     """
     Turn stream of data into training data for the language model. It is
     meant to be ML library agnostic.
@@ -78,7 +93,7 @@ class PPMEstimator(Estimator):
     targets = [[self.indices[s] for s in label] for label in windows[1:]]
     return contexts, targets
 
-  def get_stream(self, data):
+  def get_stream(self, data: Sequence) -> Sequence:
     """
     Using the text stream function, split data based on characters or words.
 
@@ -92,7 +107,36 @@ class PPMEstimator(Estimator):
 
     return utils.get_stream_text(data, mode=self.stream_type)
 
-  def fit(self, data):
+  def save(self, path: str) -> None:
+    """
+    Save the class instance to file.
+
+    Args:
+      path: The path of the saved file.
+
+    Returns:
+      None.
+    """
+
+    with open(path + '.pkl', 'wb') as out:
+      pkl.dump(self, out, pickle.HIGHEST_PROTOCOL)
+
+  @classmethod
+  def from_saved(cls, path: str) -> PPMEstimator:
+    """
+    Load the class instance from file.
+
+    Args:
+      path: The path of the saved file.
+
+    Returns:
+      The loaded class instance.
+    """
+
+    with open(path + '.pkl', 'rb') as inp:
+      return pkl.load(inp)
+
+  def fit(self, data: Sequence):
     """
     Train the language model on the data.
 
@@ -123,7 +167,12 @@ class PPMEstimator(Estimator):
     Returns:
       None
     """
-    self.model.state_h, self.model.state_c = self.model.init_state()
+    if mode == 'encode':
+      LOGGER.info('Encoding...')
+    if mode == 'decode':
+      LOGGER.info('Decoding...')
+    self.model.reset_states()
+
 
 
 class LSTM(nn.Module):
@@ -131,7 +180,7 @@ class LSTM(nn.Module):
   LSTM language model, implemented using PyTorch.
   """
 
-  def __init__(self, configs):
+  def __init__(self, configs: dict) -> None:
     super().__init__()
     self.device = torch.device('cuda') \
       if torch.cuda.is_available() else torch.device('cpu')
@@ -157,7 +206,8 @@ class LSTM(nn.Module):
     # Init hidden state
     self.state_h, self.state_c = self.init_state()
 
-  def forward(self, inputs, prev_state):
+  def forward(self, inputs: torch.Tensor,
+              prev_state: Tuple[torch.Tensor, torch.Tensor]):
     """
     Forward method for PyTorch nn.Module.
 
@@ -178,7 +228,7 @@ class LSTM(nn.Module):
     log_prob = F.log_softmax(self.linear(output), dim=-1)
     return log_prob, state
 
-  def init_state(self):
+  def init_state(self) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Initialize the hidden state to zeros at the beginning each epoch.
     The dimensions are (self.num_layers, self.context_width, self.hidden_size).
@@ -190,7 +240,18 @@ class LSTM(nn.Module):
     return (torch.zeros(self.num_layers, self.context_width, self.hidden_size),
             torch.zeros(self.num_layers, self.context_width, self.hidden_size))
 
-  def fit(self, contexts, targets):
+  def reset_states(self):
+    """
+    Reset the hidden state of the model.
+
+    Returns:
+      None.
+    """
+
+    self.state_h, self.state_c = self.init_state()
+
+  def fit(self, contexts: Sequence[Sequence], targets: Sequence[Sequence])\
+    -> None:
     """
     Train the language model.
 
@@ -202,14 +263,16 @@ class LSTM(nn.Module):
     Returns:
       None.
     """
+
     n_samples = len(targets)
     losses = []
     loss_fn = nn.NLLLoss()
     optimizer = optim.Adam(self.parameters(), lr=self.lr)
 
     self.train()
-
-    for epoch in range(self.epochs):
+    print('Training...')
+    # for epoch in range(self.epochs):
+    for epoch in utils.progressbar(range(self.epochs), 'Epoch: '):
       total_loss = 0
       state_h, state_c = self.init_state()
       for batch_ids in range(0, n_samples, self.batch_size):
@@ -218,10 +281,10 @@ class LSTM(nn.Module):
         batch_contexts = contexts[batch_ids: batch_ids + self.batch_size]
         batch_targets = targets[batch_ids: batch_ids + self.batch_size]
 
-        contexts_tensor = torch.tensor(batch_contexts, dtype=torch.long).to(
-          self.device)
-        targets_tensor = torch.tensor(batch_targets, dtype=torch.long).to(
-          self.device)
+        contexts_tensor = (torch.tensor(batch_contexts, dtype=torch.long)
+                           .to(self.device))
+        targets_tensor = (torch.tensor(batch_targets, dtype=torch.long)
+                          .to(self.device))
         log_probs, (state_h, state_c) = self.forward(contexts_tensor,
                                                      (state_h, state_c))
         state_h = state_h.detach()
@@ -234,11 +297,12 @@ class LSTM(nn.Module):
         total_loss += loss.item()
 
         if batch_ids % (100 * self.batch_size) == 0:
-          print('Epoch: {} Sample: {} Loss: {}'.format(epoch, batch_ids,
-                                                       loss.item()))
+          LOGGER.info('Epoch: {} Average Loss: {}'
+                      .format(epoch, np.array(total_loss).mean()))
+          # print()
       losses.append(total_loss)
 
-  def get_cdf(self, context):
+  def get_cdf(self, context: Sequence) -> Sequence:
     """
     Returns the CDF each time called base on the context.
 
