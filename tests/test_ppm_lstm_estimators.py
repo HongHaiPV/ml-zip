@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import Mock
 
-from src.estimators import PPMEstimator, LSTM
-from src.arithmetic_coding import ArithmeticCoding
+from mlzip.estimators import PPMEstimator, LSTM
+from mlzip.arithmetic_coding import ArithmeticCoding
 
 COUNTER_ARRAY = [0, 1, 2, 3, 4, 5, 6]
 

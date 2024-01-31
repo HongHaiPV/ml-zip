@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import logging
 import pickle
+import sys
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -168,9 +170,9 @@ class PPMEstimator(Estimator):
       None
     """
     if mode == 'encode':
-      LOGGER.info('Encoding...')
+      LOGGER.info('Encoding ...')
     if mode == 'decode':
-      LOGGER.info('Decoding...')
+      LOGGER.info('Decoding ...')
     self.model.reset_states()
 
 
@@ -179,7 +181,6 @@ class LSTM(nn.Module):
   """
   LSTM language model, implemented using PyTorch.
   """
-
   def __init__(self, configs: dict) -> None:
     super().__init__()
     self.device = torch.device('cuda') \
@@ -194,6 +195,7 @@ class LSTM(nn.Module):
     self.batch_size = configs.get('batch_size', 128)
     self.epochs = configs.get('epochs', 120)
     self.lr = configs.get('lr', 1e-4)
+    self.verbose = False
 
     # Model's structure
     self.embed = nn.Embedding(self.vocab_size, self.embed_size)
@@ -270,7 +272,7 @@ class LSTM(nn.Module):
     optimizer = optim.Adam(self.parameters(), lr=self.lr)
 
     self.train()
-    print('Training...')
+    print('Training the estimator ...')
     # for epoch in range(self.epochs):
     for epoch in utils.progressbar(range(self.epochs), 'Epoch: '):
       total_loss = 0

@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import Mock
 
-from src.arithmetic_coding import ArithmeticCoding
-from src.estimators import FrequencyEstimator
+from mlzip.arithmetic_coding import ArithmeticCoding
+from mlzip.estimators import FrequencyEstimator
 
 
 ABCD = 'abcddabccadb'

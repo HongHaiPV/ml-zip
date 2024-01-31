@@ -8,4 +8,5 @@ from .frequency_estimators import Estimator
 from .ppm_estimators import PPMEstimator
 from .ppm_estimators import LSTM
 
-__all__ = ['AdaptiveFrequencyEstimator', 'FrequencyEstimator', 'Estimator']
+__all__ = ['AdaptiveFrequencyEstimator', 'FrequencyEstimator', 'Estimator',
+           'PPMEstimator', 'LSTM']

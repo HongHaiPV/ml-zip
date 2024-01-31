@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import Mock
 
-from src.arithmetic_coding import *
+from mlzip.arithmetic_coding import *
 
 LOWER_TEST = 0xabc
 UPPER_TEST = 0xdef
@@ -59,13 +59,13 @@ def decoder_state():
 
 def test_append_bits(ac, encoder_state):
   encoded_chunk = ac.append_bits(encoder_state)
-  assert encoded_chunk == [False, True, False, False, False, False, False, 
+  assert encoded_chunk == [False, True, False, False, False, False, False,
                           False, False, False, False, False, False, False,
                           False, False, False, False, False, False, False, True]
   assert encoder_state.lower == 0x2f000000
   assert encoder_state.upper == 0xfbffffff
   assert encoder_state.underflow_bits == 1
-  
+
 def test_append_remain_bits(ac, encoder_state):
   encoded_chunk = ac.append_remain_bits(encoder_state)
 
@@ -76,7 +76,7 @@ def test_append_remain_bits(ac, encoder_state):
 
 def test_parse_encoded_bits(ac, decoder_state):
   ac.parse_encoded_bits(decoder_state, INPUT_CODE)
-  
+
   assert decoder_state.lower == 0x2f000000
   assert decoder_state.upper == 0xfbffffff
   assert decoder_state.code == 0x80100000
